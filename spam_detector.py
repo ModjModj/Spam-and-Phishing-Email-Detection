@@ -7,6 +7,7 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
+from scipy.sparse import hstack
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 #import spam email csv file
@@ -23,10 +24,20 @@ def process_text(text):
 
     return ' '.join(clean_words)
 
+#Expand Dataset
+df['message_length'] = df['Message'].apply(len)  # Total character count
+df['num_exclamations'] = df['Message'].apply(lambda x: x.count('!'))  # Count of '!'
+df['num_capitals'] = df['Message'].apply(lambda x: sum(1 for c in x if c.isupper()))  # Uppercase letters count
+df['num_digits'] = df['Message'].apply(lambda x: sum(1 for c in x if c.isdigit()))  # Numbers count
+df['num_words'] = df['Message'].apply(lambda x: len(x.split()))  # Word count
+df['num_special_chars'] = df['Message'].apply(lambda x: sum(1 for c in x if c in "@#$%^&*()_+={}[]:;<>?/|"))  # Special characters
+
 #Split array of tokens into training data
 vectorizer = TfidfVectorizer(preprocessor=process_text, ngram_range=(1,2), max_df=0.9, min_df=5, stop_words='english')
 messages_bow = vectorizer.fit_transform(df['Message'])
-X_train, X_test, y_train, y_test = train_test_split(messages_bow, df['Type'], test_size=0.2, random_state=0)
+X_meta = df[['message_length', 'num_exclamations', 'num_capitals', 'num_digits', 'num_words', 'num_special_chars']].values
+X_combined = hstack([messages_bow, X_meta])
+X_train, X_test, y_train, y_test = train_test_split(X_combined, df['Type'], test_size=0.2, random_state=0)
 
 #Create a program to predict which emails are spam based on the training data we gave it
 classifier = MultinomialNB().fit(X_train, y_train)
@@ -36,8 +47,17 @@ email_subject = input("Enter the email's subject line: ")
 email = [email_subject]
 
 #Provide prediction based on input
-arr = vectorizer.transform(email)
-pred = classifier.predict(arr)
+email_text = vectorizer.transform(email)
+email_data = np.array([[len(email_subject), 
+                        email_subject.count('!'), 
+                        sum(1 for c in email_subject if c.isupper()), 
+                        sum(1 for c in email_subject if c.isdigit()), 
+                        len(email_subject.split()), 
+                        sum(1 for c in email_subject if c in "@#$%^&*()_+={}[]:;<>?/|")]])
+
+# Transform text and combine with metadata
+email_combined = hstack([email_text, email_data])
+pred = classifier.predict(email_combined)
 if pred[0] == "spam":
     print("Likely a Scam Email. Block and don't respond.")
 else:
@@ -49,4 +69,5 @@ print("\nConfusion Matrix:\n", confusion_matrix(y_test, y_pred))
 print("\nAccuracy:", accuracy_score(y_test, y_pred))
 print("\nClassification Report:\n", classification_report(y_test, y_pred))
 
+#Test Subject
 #WIN BIG $$$$$ BY CALLING 1+013-859-3793
